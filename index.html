@@ -6,8 +6,6 @@
   <title>Electrical Takeoff & Estimating Tool</title>
   <!-- PDF.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <!-- jsPDF CDN for multi-page export -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { display: flex; flex-direction: column; height: 100vh; background: #0f172a; color: #f8fafc; overflow: hidden; }
@@ -86,15 +84,13 @@
       background: #0284c7;
       color: white;
       border: none;
-      padding: 10px;
+      padding: 12px;
       border-radius: 6px;
       font-weight: 600;
       cursor: pointer;
       text-align: center;
     }
     .btn-action:hover { background: #0369a1; }
-    .btn-secondary { background: #334155; }
-    .btn-secondary:hover { background: #475569; }
     .btn-clear { background: #ef4444; }
     .btn-clear:hover { background: #dc2626; }
 
@@ -149,13 +145,13 @@
     .placed-symbol {
       position: absolute;
       transform: translate(-50%, -50%);
-      width: 26px;
-      height: 26px;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       font-weight: 700;
       color: #ffffff;
       cursor: pointer;
@@ -192,103 +188,6 @@
     }
     .floating-bar button:hover { background: #475569; }
 
-    /* Modal / Export Preview Options */
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(15, 23, 42, 0.85);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 300;
-      backdrop-filter: blur(4px);
-    }
-    .modal-card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      width: 900px;
-      max-width: 95vw;
-      max-height: 90vh;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-      overflow: hidden;
-    }
-    .modal-header {
-      padding: 16px 20px;
-      background: #0f172a;
-      border-bottom: 1px solid #334155;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: bold;
-      color: #38bdf8;
-    }
-    .modal-body {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-    .modal-sidebar {
-      width: 300px;
-      padding: 20px;
-      border-right: 1px solid #334155;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      background: #1e293b;
-    }
-    .modal-preview-area {
-      flex: 1;
-      background: #090d16;
-      padding: 20px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: auto;
-    }
-    .modal-preview-area canvas {
-      max-width: 100%;
-      max-height: 100%;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    }
-    .option-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .option-group label {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      font-weight: 600;
-    }
-    .option-group input[type="range"],
-    .option-group select {
-      width: 100%;
-      padding: 8px;
-      background: #334155;
-      border: 1px solid #475569;
-      color: white;
-      border-radius: 6px;
-    }
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.85rem;
-      color: #f8fafc;
-      cursor: pointer;
-    }
-    .modal-footer {
-      padding: 16px 20px;
-      background: #0f172a;
-      border-top: 1px solid #334155;
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-    }
-
     #loading-overlay {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -299,15 +198,40 @@
       color: #38bdf8;
       font-size: 1.2rem;
       font-weight: bold;
-      z-index: 400;
+      z-index: 200;
     }
 
-    /* Print Specific Hidden Container */
-    #print-container { display: none; }
+    /* Native Print View Layering */
+    #print-sheet-wrapper { display: none; }
+
     @media print {
-      body * { display: none !important; }
-      #print-container, #print-container * { display: block !important; }
-      #print-container img { width: 100%; height: auto; }
+      @page { margin: 0; size: auto; }
+      body { background: white !important; color: black !important; overflow: visible !important; height: auto !important; }
+      header, sidebar, main, .floating-bar, #drop-zone, #loading-overlay { display: none !important; }
+      
+      #print-sheet-wrapper {
+        display: block !important;
+        width: 100%;
+      }
+      .print-page {
+        page-break-after: always;
+        break-after: page;
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        background: #fff;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      .print-page img {
+        max-width: 100%;
+        max-height: calc(100vh - 80px);
+        object-fit: contain;
+      }
     }
   </style>
 </head>
@@ -343,8 +267,7 @@
       </div>
 
       <div class="panel-section" style="margin-top: auto;">
-        <button class="btn-action" onclick="openExportModal('pdf')">Export PDF / Options</button>
-        <button class="btn-action btn-secondary" onclick="openExportModal('print')">Print Preview</button>
+        <button class="btn-action" onclick="triggerNativePrint()">Print / Export PDF</button>
         <button class="btn-action btn-clear" onclick="clearMarkings()">Clear Current Page</button>
       </div>
     </sidebar>
@@ -376,56 +299,12 @@
         <button id="next-page">&gt;</button>
       </div>
 
-      <div id="loading-overlay" style="display:none;">Processing Request...</div>
+      <div id="loading-overlay" style="display:none;">Preparing Document Pages...</div>
     </main>
   </div>
 
-  <!-- Interactive Export & Print Preview Modal -->
-  <div class="modal-overlay" id="export-modal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <span id="modal-title">Export Options & Preview</span>
-        <button style="background:none; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer;" onclick="closeModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="modal-sidebar">
-          <div class="option-group">
-            <label>Pages to Include</label>
-            <select id="opt-pages">
-              <option value="all">All Pages</option>
-              <option value="current">Current Page Only</option>
-            </select>
-          </div>
-
-          <div class="option-group">
-            <label>Symbol Size Multiplier (<span id="opt-size-val">100%</span>)</label>
-            <input type="range" id="opt-size" min="0.5" max="2" step="0.1" value="1">
-          </div>
-
-          <div class="option-group">
-            <label class="checkbox-label">
-              <input type="checkbox" id="opt-header" checked> Include Top Counter Banner
-            </label>
-          </div>
-
-          <div class="option-group">
-            <label class="checkbox-label">
-              <input type="checkbox" id="opt-footer" checked> Include Footer Web Link
-            </label>
-          </div>
-        </div>
-        <div class="modal-preview-area">
-          <canvas id="modal-preview-canvas"></canvas>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-action btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn-action" id="modal-submit-btn" onclick="executeExport()">Generate Output</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="print-container"></div>
+  <!-- Native Print Container -->
+  <div id="print-sheet-wrapper"></div>
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -443,7 +322,6 @@
     let pdfDoc = null;
     let pageNum = 1;
     let markings = [];
-    let exportMode = 'pdf'; // 'pdf' or 'print'
     
     // Zoom & Pan state
     let zoomLevel = 1;
@@ -657,178 +535,107 @@
       renderPage(pageNum);
     });
 
-    /* EXPORT & PRINT PREVIEW MODAL LOGIC */
-    const exportModal = document.getElementById('export-modal');
-    const previewCanvas = document.getElementById('modal-preview-canvas');
-    const previewCtx = previewCanvas.getContext('2d');
-
-    function openExportModal(mode) {
+    /* Native Browser Print Engine across ALL pages */
+    async function triggerNativePrint() {
       if (!pdfDoc) return;
-      exportMode = mode;
-      document.getElementById('modal-title').textContent = mode === 'pdf' ? 'Export PDF Options & Preview' : 'Print Options & Preview';
-      document.getElementById('modal-submit-btn').textContent = mode === 'pdf' ? 'Download PDF' : 'Print Document';
-      exportModal.style.display = 'flex';
-      updatePreviewCanvas();
-    }
-
-    function closeModal() {
-      exportModal.style.display = 'none';
-    }
-
-    // Modal Inputs Realtime Listeners
-    document.getElementById('opt-size').addEventListener('input', (e) => {
-      document.getElementById('opt-size-val').textContent = `${Math.round(e.target.value * 100)}%`;
-      updatePreviewCanvas();
-    });
-    document.getElementById('opt-pages').addEventListener('change', updatePreviewCanvas);
-    document.getElementById('opt-header').addEventListener('change', updatePreviewCanvas);
-    document.getElementById('opt-footer').addEventListener('change', updatePreviewCanvas);
-
-    async function generateCustomCanvas(targetPageNum, options) {
-      const page = await pdfDoc.getPage(targetPageNum);
-      const viewport = page.getViewport({ scale: 2.0 });
-
-      const c = document.createElement('canvas');
-      c.width = viewport.width;
-      c.height = viewport.height;
-      const cx = c.getContext('2d');
-
-      // Base Render
-      await page.render({ canvasContext: cx, viewport: viewport }).promise;
-
-      // 1. Header Banner
-      if (options.showHeader) {
-        const bannerHeight = 60;
-        cx.fillStyle = '#1e293b';
-        cx.fillRect(0, 0, c.width, bannerHeight);
-
-        const pageCounts = {};
-        Object.keys(SYMBOLS).forEach(type => pageCounts[type] = 0);
-        markings.filter(m => m.page === targetPageNum).forEach(m => { if (pageCounts[m.type] !== undefined) pageCounts[m.type]++; });
-
-        let curX = 20;
-        cx.font = 'bold 18px sans-serif';
-        cx.textAlign = 'left';
-        cx.textBaseline = 'middle';
-
-        Object.keys(SYMBOLS).forEach(type => {
-          const sym = SYMBOLS[type];
-          cx.beginPath();
-          cx.arc(curX + 10, bannerHeight / 2, 10, 0, 2 * Math.PI);
-          cx.fillStyle = sym.color;
-          cx.fill();
-
-          cx.fillStyle = '#ffffff';
-          const text = `${sym.name}: ${pageCounts[type]}`;
-          cx.fillText(text, curX + 28, bannerHeight / 2);
-          curX += cx.measureText(text).width + 55;
-        });
-      }
-
-      // 2. Markings
-      const pageMarkings = markings.filter(m => m.page === targetPageNum);
-      const baseRadius = 24 * options.sizeMult;
-
-      pageMarkings.forEach(m => {
-        const sym = SYMBOLS[m.type];
-        const x = m.xRatio * c.width;
-        const y = m.yRatio * c.height;
-
-        cx.beginPath();
-        cx.arc(x, y, baseRadius, 0, 2 * Math.PI);
-        cx.fillStyle = sym.color;
-        cx.fill();
-        cx.lineWidth = 3 * options.sizeMult;
-        cx.strokeStyle = '#ffffff';
-        cx.stroke();
-
-        cx.fillStyle = '#ffffff';
-        cx.font = `bold ${Math.round(22 * options.sizeMult)}px sans-serif`;
-        cx.textAlign = 'center';
-        cx.textBaseline = 'middle';
-        cx.fillText(sym.code, x, y);
-      });
-
-      // 3. Footer
-      if (options.showFooter) {
-        const footerHeight = 35;
-        cx.fillStyle = '#0f172a';
-        cx.fillRect(0, c.height - footerHeight, c.width, footerHeight);
-
-        cx.fillStyle = '#94a3b8';
-        cx.font = '16px sans-serif';
-        cx.textAlign = 'center';
-        cx.textBaseline = 'middle';
-        cx.fillText('Generated via Electrical Takeoff & Estimating Tool', c.width / 2, c.height - (footerHeight / 2));
-      }
-
-      return c;
-    }
-
-    async function updatePreviewCanvas() {
-      const options = {
-        sizeMult: parseFloat(document.getElementById('opt-size').value),
-        showHeader: document.getElementById('opt-header').checked,
-        showFooter: document.getElementById('opt-footer').checked,
-      };
-
-      const compiledCanvas = await generateCustomCanvas(pageNum, options);
-      previewCanvas.width = compiledCanvas.width;
-      previewCanvas.height = compiledCanvas.height;
-      previewCtx.drawImage(compiledCanvas, 0, 0);
-    }
-
-    async function executeExport() {
-      closeModal();
       const loading = document.getElementById('loading-overlay');
       loading.style.display = 'flex';
 
-      const options = {
-        sizeMult: parseFloat(document.getElementById('opt-size').value),
-        showHeader: document.getElementById('opt-header').checked,
-        showFooter: document.getElementById('opt-footer').checked,
-        pages: document.getElementById('opt-pages').value
-      };
+      const printWrapper = document.getElementById('print-sheet-wrapper');
+      printWrapper.innerHTML = '';
 
-      const startPage = options.pages === 'current' ? pageNum : 1;
-      const endPage = options.pages === 'current' ? pageNum : pdfDoc.numPages;
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
 
-      if (exportMode === 'pdf') {
-        const { jsPDF } = window.jspdf;
-        let pdfOutput = null;
+      for (let p = 1; p <= pdfDoc.numPages; p++) {
+        const page = await pdfDoc.getPage(p);
+        const viewport = page.getViewport({ scale: 2.0 });
 
-        for (let p = startPage; p <= endPage; p++) {
-          const renderedCanvas = await generateCustomCanvas(p, options);
-          const imgData = renderedCanvas.toDataURL('image/jpeg', 0.95);
-          const orientation = renderedCanvas.width > renderedCanvas.height ? 'landscape' : 'portrait';
+        tempCanvas.width = viewport.width;
+        tempCanvas.height = viewport.height;
 
-          if (!pdfOutput) {
-            pdfOutput = new jsPDF({ orientation: orientation, unit: 'px', format: [renderedCanvas.width, renderedCanvas.height] });
-          } else {
-            pdfOutput.addPage([renderedCanvas.width, renderedCanvas.height], orientation);
-          }
+        // Render PDF base page
+        await page.render({ canvasContext: tempCtx, viewport: viewport }).promise;
 
-          pdfOutput.addImage(imgData, 'JPEG', 0, 0, renderedCanvas.width, renderedCanvas.height);
-        }
+        // 1. Draw Top Header Counter Banner
+        const bannerHeight = 50;
+        tempCtx.fillStyle = '#1e293b';
+        tempCtx.fillRect(0, 0, tempCanvas.width, bannerHeight);
 
-        pdfOutput.save('electrical_takeoff_estimate.pdf');
-      } else if (exportMode === 'print') {
-        const printContainer = document.getElementById('print-container');
-        printContainer.innerHTML = '';
+        const pageCounts = {};
+        Object.keys(SYMBOLS).forEach(type => pageCounts[type] = 0);
+        markings.filter(m => m.page === p).forEach(m => { if (pageCounts[m.type] !== undefined) pageCounts[m.type]++; });
 
-        for (let p = startPage; p <= endPage; p++) {
-          const renderedCanvas = await generateCustomCanvas(p, options);
-          const img = document.createElement('img');
-          img.src = renderedCanvas.toDataURL('image/png');
-          printContainer.appendChild(img);
-        }
+        let curX = 20;
+        tempCtx.font = 'bold 16px sans-serif';
+        tempCtx.textAlign = 'left';
+        tempCtx.textBaseline = 'middle';
 
-        setTimeout(() => {
-          window.print();
-        }, 300);
+        Object.keys(SYMBOLS).forEach(type => {
+          const sym = SYMBOLS[type];
+          tempCtx.beginPath();
+          tempCtx.arc(curX + 8, bannerHeight / 2, 8, 0, 2 * Math.PI);
+          tempCtx.fillStyle = sym.color;
+          tempCtx.fill();
+
+          tempCtx.fillStyle = '#ffffff';
+          const text = `${sym.name}: ${pageCounts[type]}`;
+          tempCtx.fillText(text, curX + 22, bannerHeight / 2);
+          curX += tempCtx.measureText(text).width + 45;
+        });
+
+        // 2. Draw Symbols
+        const pageMarkings = markings.filter(m => m.page === p);
+        const iconRadius = 20;
+
+        pageMarkings.forEach(m => {
+          const sym = SYMBOLS[m.type];
+          const x = m.xRatio * tempCanvas.width;
+          const y = m.yRatio * tempCanvas.height;
+
+          tempCtx.beginPath();
+          tempCtx.arc(x, y, iconRadius, 0, 2 * Math.PI);
+          tempCtx.fillStyle = sym.color;
+          tempCtx.fill();
+          tempCtx.lineWidth = 2.5;
+          tempCtx.strokeStyle = '#ffffff';
+          tempCtx.stroke();
+
+          tempCtx.fillStyle = '#ffffff';
+          tempCtx.font = 'bold 18px sans-serif';
+          tempCtx.textAlign = 'center';
+          tempCtx.textBaseline = 'middle';
+          tempCtx.fillText(sym.code, x, y);
+        });
+
+        // 3. Draw Bottom Footer Link
+        const footerHeight = 30;
+        tempCtx.fillStyle = '#0f172a';
+        tempCtx.fillRect(0, tempCanvas.height - footerHeight, tempCanvas.width, footerHeight);
+
+        tempCtx.fillStyle = '#94a3b8';
+        tempCtx.font = '14px sans-serif';
+        tempCtx.textAlign = 'center';
+        tempCtx.textBaseline = 'middle';
+        tempCtx.fillText('Generated via Electrical Takeoff & Estimating Tool', tempCanvas.width / 2, tempCanvas.height - (footerHeight / 2));
+
+        // Create Print DOM Page Element
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'print-page';
+        
+        const img = document.createElement('img');
+        img.src = tempCanvas.toDataURL('image/png');
+        pageDiv.appendChild(img);
+
+        printWrapper.appendChild(pageDiv);
       }
 
       loading.style.display = 'none';
+
+      // Launch native print dialog
+      setTimeout(() => {
+        window.print();
+      }, 200);
     }
 
     window.addEventListener('resize', () => {
