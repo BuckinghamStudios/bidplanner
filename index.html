@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Electrical Takeoff & Estimating Tool</title>
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { display: flex; flex-direction: column; height: 100vh; background: #0f172a; color: #f8fafc; overflow: hidden; }
+
+    /* Top Bar with Dynamic Counters */
+    header {
+      background: #1e293b;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #334155;
+      z-index: 10;
+    }
+    .header-title { font-weight: 700; font-size: 1.1rem; color: #38bdf8; }
+    .counter-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+    .counter-badge {
+      background: #334155;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #475569;
+    }
+    .counter-badge span.count { font-weight: 700; color: #38bdf8; font-size: 1rem; }
+
+    /* Main Workspace Layout */
+    .workspace { display: flex; flex: 1; overflow: hidden; }
+
+    /* Left Sidebar - Symbol Palette & Controls */
+    sidebar {
+      width: 260px;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 5;
+    }
+    .panel-section { display: flex; flex-direction: column; gap: 8px; }
+    .panel-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; font-weight: 600; }
+    
+    .symbol-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #334155;
+      border: 2px solid transparent;
+      color: #f8fafc;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      text-align: left;
+    }
+    .symbol-btn:hover { background: #475569; }
+    .symbol-btn.active { border-color: #38bdf8; background: #0284c7; }
+    
+    .symbol-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.75rem;
+      color: #fff;
+    }
+
+    .btn-action {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+    }
+    .btn-action:hover { background: #0369a1; }
+    .btn-clear { background: #ef4444; }
+    .btn-clear:hover { background: #dc2626; }
+
+    /* Document Viewer */
+    main {
+      flex: 1;
+      background: #090d16;
+      position: relative;
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 20px;
+    }
+
+    /* Drag & Drop Overlay */
+    #drop-zone {
+      border: 3px dashed #475569;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      color: #94a3b8;
+      cursor: pointer;
+      margin: auto;
+      max-width: 500px;
+    }
+    #drop-zone.dragover { border-color: #38bdf8; background: rgba(56, 189, 248, 0.05); }
+
+    /* Canvas Wrapper */
+    #canvas-container {
+      position: relative;
+      display: inline-block;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+    canvas { display: block; background: #ffffff; }
+
+    /* Placed Overlay Markings */
+    .placed-symbol {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #ffffff;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+      user-select: none;
+    }
+    .placed-symbol:hover { transform: translate(-50%, -50%) scale(1.25); z-index: 100; }
+
+    /* Page Nav Floating Bar */
+    .page-controls {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      padding: 8px 16px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+    .page-controls button {
+      background: #334155;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* Print Formatting */
+    @media print {
+      body { background: white; color: black; overflow: visible; }
+      sidebar, header button, .page-controls, #drop-zone { display: none !important; }
+      header { border: none; background: transparent; padding: 0; }
+      .counter-badge { border: 1px solid #ccc; color: black; background: #f0f0f0; }
+      main { padding: 0; overflow: visible; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar with Counts -->
+  <header>
+    <div class="header-title">Electrical Takeoff Tool</div>
+    <div class="counter-bar" id="counter-bar">
+      <!-- Live Counts populate here -->
+    </div>
+  </header>
+
+  <div class="workspace">
+    <!-- Sidebar / Tool Palette -->
+    <sidebar>
+      <div class="panel-section">
+        <div class="panel-title">Select Symbol</div>
+        <button class="symbol-btn active" data-type="outlet" data-color="#22c55e" data-code="O">
+          <div class="symbol-icon" style="background:#22c55e;">O</div> Duplex Outlet
+        </button>
+        <button class="symbol-btn" data-type="switch" data-color="#3b82f6" data-code="S">
+          <div class="symbol-icon" style="background:#3b82f6;">S</div> Switch
+        </button>
+        <button class="symbol-btn" data-type="recessed" data-color="#eab308" data-code="R">
+          <div class="symbol-icon" style="background:#eab308;">R</div> Recessed Light
+        </button>
+        <button class="symbol-btn" data-type="fixture" data-color="#a855f7" data-code="F">
+          <div class="symbol-icon" style="background:#a855f7;">F</div> Light Fixture
+        </button>
+        <button class="symbol-btn" data-type="panel" data-color="#ef4444" data-code="P">
+          <div class="symbol-icon" style="background:#ef4444;">P</div> Sub / Main Panel
+        </button>
+        <button class="symbol-btn" data-type="junction" data-color="#f97316" data-code="J">
+          <div class="symbol-icon" style="background:#f97316;">J</div> Junction Box
+        </button>
+      </div>
+
+      <div class="panel-section" style="margin-top: auto;">
+        <button class="btn-action" onclick="window.print()">Export / Print Sheet</button>
+        <button class="btn-action btn-clear" onclick="clearMarkings()">Clear Current Page</button>
+      </div>
+    </sidebar>
+
+    <!-- Main Drawing Surface -->
+    <main id="main-area">
+      <div id="drop-zone">
+        <h3>Drag & Drop Floorplan PDF Here</h3>
+        <p style="margin-top: 8px; font-size: 0.85rem;">or click to browse your computer</p>
+        <input type="file" id="file-input" accept="application/pdf" style="display:none;" />
+      </div>
+
+      <div id="canvas-container" style="display:none;">
+        <canvas id="pdf-render"></canvas>
+        <div id="markings-layer"></div>
+      </div>
+
+      <!-- Page Controls -->
+      <div class="page-controls" id="page-controls" style="display:none;">
+        <button id="prev-page">&lt;</button>
+        <span style="font-size: 0.85rem;">Page <span id="page-num">1</span> of <span id="page-count">1</span></span>
+        <button id="next-page">&gt;</button>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    // State Configuration
+    const SYMBOLS = {
+      outlet: { name: 'Outlets', color: '#22c55e', code: 'O' },
+      switch: { name: 'Switches', color: '#3b82f6', code: 'S' },
+      recessed: { name: 'Recessed Lights', color: '#eab308', code: 'R' },
+      fixture: { name: 'Fixtures', color: '#a855f7', code: 'F' },
+      panel: { name: 'Panels', color: '#ef4444', code: 'P' },
+      junction: { name: 'Junction Boxes', color: '#f97316', code: 'J' }
+    };
+
+    let selectedType = 'outlet';
+    let pdfDoc = null;
+    let pageNum = 1;
+    let scale = 1.5;
+    let markings = []; // Array storing all objects: { id, page, xRatio, yRatio, type }
+
+    // DOM Elements
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const canvasContainer = document.getElementById('canvas-container');
+    const canvas = document.getElementById('pdf-render');
+    const ctx = canvas.getContext('2d');
+    const markingsLayer = document.getElementById('markings-layer');
+    const counterBar = document.getElementById('counter-bar');
+
+    // Init Counters
+    function updateCounters() {
+      counterBar.innerHTML = '';
+      const counts = {};
+      Object.keys(SYMBOLS).forEach(type => counts[type] = 0);
+      
+      markings.forEach(m => {
+        if (counts[m.type] !== undefined) counts[m.type]++;
+      });
+
+      Object.keys(SYMBOLS).forEach(type => {
+        const badge = document.createElement('div');
+        badge.className = 'counter-badge';
+        badge.innerHTML = `
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: ${SYMBOLS[type].color}"></div>
+          ${SYMBOLS[type].name}: <span class="count">${counts[type]}</span>
+        `;
+        counterBar.appendChild(badge);
+      });
+    }
+    updateCounters();
+
+    // Palette Selection Listener
+    document.querySelectorAll('.symbol-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.symbol-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedType = btn.dataset.type;
+      });
+    });
+
+    // File Drag/Drop Handlers
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => loadPDF(e.target.files[0]));
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) loadPDF(e.dataTransfer.files[0]);
+    });
+
+    // Load PDF
+    function loadPDF(file) {
+      if (!file || file.type !== 'application/pdf') return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const typedarray = new Uint8Array(e.target.result);
+        pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+          pdfDoc = pdf;
+          document.getElementById('page-count').textContent = pdf.numPages;
+          dropZone.style.display = 'none';
+          canvasContainer.style.display = 'inline-block';
+          document.getElementById('page-controls').style.display = 'flex';
+          pageNum = 1;
+          renderPage(pageNum);
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // Render Page
+    function renderPage(num) {
+      pdfDoc.getPage(num).then(page => {
+        const viewport = page.getViewport({ scale: scale });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = { pdfCanvasContext: ctx, viewport: viewport };
+        page.render(renderContext).promise.then(() => {
+          renderMarkings();
+        });
+      });
+      document.getElementById('page-num').textContent = num;
+    }
+
+    // Place Marking Handler (Uses percentage coordinates so symbols scale properly)
+    canvasContainer.addEventListener('click', (e) => {
+      if (e.target !== canvas && e.target !== markingsLayer) return;
+      const rect = canvas.getBoundingClientRect();
+      const xRatio = (e.clientX - rect.left) / rect.width;
+      const yRatio = (e.clientY - rect.top) / rect.height;
+
+      markings.push({
+        id: Date.now(),
+        page: pageNum,
+        xRatio: xRatio,
+        yRatio: yRatio,
+        type: selectedType
+      });
+
+      renderMarkings();
+      updateCounters();
+    });
+
+    // Render Markings on Active Page
+    function renderMarkings() {
+      markingsLayer.innerHTML = '';
+      const rect = canvas.getBoundingClientRect();
+
+      markings.filter(m => m.page === pageNum).forEach(m => {
+        const sym = SYMBOLS[m.type];
+        const el = document.createElement('div');
+        el.className = 'placed-symbol';
+        el.style.left = `${m.xRatio * 100}%`;
+        el.style.top = `${m.yRatio * 100}%`;
+        el.style.backgroundColor = sym.color;
+        el.textContent = sym.code;
+        el.title = "Click to remove";
+
+        // Remove item on click
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          markings = markings.filter(item => item.id !== m.id);
+          renderMarkings();
+          updateCounters();
+        });
+
+        markingsLayer.appendChild(el);
+      });
+    }
+
+    function clearMarkings() {
+      markings = markings.filter(m => m.page !== pageNum);
+      renderMarkings();
+      updateCounters();
+    }
+
+    // Page Navigation
+    document.getElementById('prev-page').addEventListener('click', () => {
+      if (pageNum <= 1) return;
+      pageNum--;
+      renderPage(pageNum);
+    });
+    document.getElementById('next-page').addEventListener('click', () => {
+      if (pageNum >= pdfDoc.numPages) return;
+      pageNum++;
+      renderPage(pageNum);
+    });
+  </script>
+</body>
+</html>
