@@ -102,7 +102,7 @@
       overflow: auto;
       display: flex;
       justify-content: center;
-      align-items: flex-start;
+      align-items: center;
       padding: 20px;
     }
 
@@ -127,6 +127,16 @@
     }
     canvas { display: block; background: #ffffff; }
 
+    /* Overlay Container matching Canvas bounds */
+    #markings-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
     /* Placed Overlay Markings */
     .placed-symbol {
       position: absolute;
@@ -143,6 +153,7 @@
       cursor: pointer;
       box-shadow: 0 2px 5px rgba(0,0,0,0.4);
       user-select: none;
+      pointer-events: auto;
     }
     .placed-symbol:hover { transform: translate(-50%, -50%) scale(1.25); z-index: 100; }
 
@@ -185,9 +196,7 @@
   <!-- Top Bar with Counts -->
   <header>
     <div class="header-title">Electrical Takeoff Tool</div>
-    <div class="counter-bar" id="counter-bar">
-      <!-- Live Counts populate here -->
-    </div>
+    <div class="counter-bar" id="counter-bar"></div>
   </header>
 
   <div class="workspace">
@@ -259,10 +268,11 @@
     let selectedType = 'outlet';
     let pdfDoc = null;
     let pageNum = 1;
-    let scale = 1.5;
-    let markings = []; // Array storing all objects: { id, page, xRatio, yRatio, type }
+    let markings = [];
+    let isRendering = false;
 
     // DOM Elements
+    const mainArea = document.getElementById('main-area');
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const canvasContainer = document.getElementById('canvas-container');
@@ -313,13 +323,13 @@
       if (e.dataTransfer.files.length) loadPDF(e.dataTransfer.files[0]);
     });
 
-    // Load PDF
+    // Load PDF Document
     function loadPDF(file) {
       if (!file || file.type !== 'application/pdf') return;
       const reader = new FileReader();
       reader.onload = function(e) {
         const typedarray = new Uint8Array(e.target.result);
-        pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+        pdfjsLib.getDocument({ data: typedarray }).promise.then(pdf => {
           pdfDoc = pdf;
           document.getElementById('page-count').textContent = pdf.numPages;
           dropZone.style.display = 'none';
@@ -327,27 +337,55 @@
           document.getElementById('page-controls').style.display = 'flex';
           pageNum = 1;
           renderPage(pageNum);
+        }).catch(err => {
+          alert("Error loading PDF: " + err.message);
         });
       };
       reader.readAsArrayBuffer(file);
     }
 
-    // Render Page
+    // Dynamic Scale Calculation & Render
     function renderPage(num) {
-      pdfDoc.getPage(num).then(page => {
-        const viewport = page.getViewport({ scale: scale });
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
+      if (isRendering || !pdfDoc) return;
+      isRendering = true;
 
-        const renderContext = { pdfCanvasContext: ctx, viewport: viewport };
+      pdfDoc.getPage(num).then(page => {
+        // Calculate dynamic scale so PDF fits nicely inside viewer window
+        const padding = 40;
+        const availableWidth = mainArea.clientWidth - padding;
+        const availableHeight = mainArea.clientHeight - padding;
+        
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const scaleX = availableWidth / unscaledViewport.width;
+        const scaleY = availableHeight / unscaledViewport.height;
+        const fitScale = Math.min(scaleX, scaleY);
+
+        // Responsive crisp rendering on high-DPI screens
+        const outputScale = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale: fitScale });
+
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = Math.floor(viewport.width) + "px";
+        canvas.style.height = Math.floor(viewport.height) + "px";
+
+        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
+        const renderContext = {
+          canvasContext: ctx,
+          transform: transform,
+          viewport: viewport
+        };
+
         page.render(renderContext).promise.then(() => {
+          isRendering = false;
           renderMarkings();
         });
       });
       document.getElementById('page-num').textContent = num;
     }
 
-    // Place Marking Handler (Uses percentage coordinates so symbols scale properly)
+    // Place Marking Handler (Uses percentage positions)
     canvasContainer.addEventListener('click', (e) => {
       if (e.target !== canvas && e.target !== markingsLayer) return;
       const rect = canvas.getBoundingClientRect();
@@ -366,10 +404,9 @@
       updateCounters();
     });
 
-    // Render Markings on Active Page
+    // Render Overlay Symbols for Active Page
     function renderMarkings() {
       markingsLayer.innerHTML = '';
-      const rect = canvas.getBoundingClientRect();
 
       markings.filter(m => m.page === pageNum).forEach(m => {
         const sym = SYMBOLS[m.type];
@@ -409,6 +446,11 @@
       if (pageNum >= pdfDoc.numPages) return;
       pageNum++;
       renderPage(pageNum);
+    });
+
+    // Auto Adjust on Window Resize
+    window.addEventListener('resize', () => {
+      if (pdfDoc) renderPage(pageNum);
     });
   </script>
 </body>
