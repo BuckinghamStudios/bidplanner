@@ -6,6 +6,8 @@
   <title>Electrical Takeoff & Estimating Tool</title>
   <!-- PDF.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <!-- jsPDF CDN for multi-page export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { display: flex; flex-direction: column; height: 100vh; background: #0f172a; color: #f8fafc; overflow: hidden; }
@@ -99,12 +101,13 @@
       flex: 1;
       background: #090d16;
       position: relative;
-      overflow: auto;
+      overflow: hidden;
       display: flex;
       justify-content: center;
       align-items: center;
-      padding: 20px;
+      cursor: grab;
     }
+    main:active { cursor: grabbing; }
 
     /* Drag & Drop Overlay */
     #drop-zone {
@@ -119,7 +122,12 @@
     }
     #drop-zone.dragover { border-color: #38bdf8; background: rgba(56, 189, 248, 0.05); }
 
-    /* Canvas Wrapper */
+    /* Canvas Wrapper & Transform Stage */
+    #stage {
+      position: absolute;
+      transform-origin: 0 0;
+      user-select: none;
+    }
     #canvas-container {
       position: relative;
       display: inline-block;
@@ -127,7 +135,6 @@
     }
     canvas { display: block; background: #ffffff; }
 
-    /* Overlay Container matching Canvas bounds */
     #markings-layer {
       position: absolute;
       top: 0;
@@ -137,7 +144,6 @@
       pointer-events: none;
     }
 
-    /* Placed Overlay Markings */
     .placed-symbol {
       position: absolute;
       transform: translate(-50%, -50%);
@@ -157,12 +163,9 @@
     }
     .placed-symbol:hover { transform: translate(-50%, -50%) scale(1.25); z-index: 100; }
 
-    /* Page Nav Floating Bar */
-    .page-controls {
+    /* Floating UI Controls */
+    .floating-bar {
       position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
       background: #1e293b;
       padding: 8px 16px;
       border-radius: 20px;
@@ -171,23 +174,33 @@
       gap: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       z-index: 10;
+      border: 1px solid #334155;
     }
-    .page-controls button {
+    .page-controls { bottom: 20px; left: 50%; transform: translateX(-50%); }
+    .zoom-controls { top: 20px; right: 20px; }
+    
+    .floating-bar button {
       background: #334155;
       color: white;
       border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
+      padding: 6px 12px;
+      border-radius: 6px;
       cursor: pointer;
+      font-weight: 600;
     }
+    .floating-bar button:hover { background: #475569; }
 
-    /* Print Formatting */
-    @media print {
-      body { background: white; color: black; overflow: visible; }
-      sidebar, header button, .page-controls, #drop-zone { display: none !important; }
-      header { border: none; background: transparent; padding: 0; }
-      .counter-badge { border: 1px solid #ccc; color: black; background: #f0f0f0; }
-      main { padding: 0; overflow: visible; }
+    #loading-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #38bdf8;
+      font-size: 1.2rem;
+      font-weight: bold;
+      z-index: 200;
     }
   </style>
 </head>
@@ -225,12 +238,12 @@
       </div>
 
       <div class="panel-section" style="margin-top: auto;">
-        <button class="btn-action" onclick="window.print()">Export / Print Sheet</button>
+        <button class="btn-action" onclick="exportAllPagesPDF()">Export All Pages to PDF</button>
         <button class="btn-action btn-clear" onclick="clearMarkings()">Clear Current Page</button>
       </div>
     </sidebar>
 
-    <!-- Main Drawing Surface -->
+    <!-- Main Workspace -->
     <main id="main-area">
       <div id="drop-zone">
         <h3>Drag & Drop Floorplan PDF Here</h3>
@@ -238,24 +251,36 @@
         <input type="file" id="file-input" accept="application/pdf" style="display:none;" />
       </div>
 
-      <div id="canvas-container" style="display:none;">
-        <canvas id="pdf-render"></canvas>
-        <div id="markings-layer"></div>
+      <div id="stage" style="display:none;">
+        <div id="canvas-container">
+          <canvas id="pdf-render"></canvas>
+          <div id="markings-layer"></div>
+        </div>
       </div>
 
-      <!-- Page Controls -->
-      <div class="page-controls" id="page-controls" style="display:none;">
+      <!-- Zoom Floating Controls -->
+      <div class="floating-bar zoom-controls" id="zoom-controls" style="display:none;">
+        <button id="zoom-out">-</button>
+        <span id="zoom-level" style="font-size: 0.85rem;">100%</span>
+        <button id="zoom-in">+</button>
+        <button id="zoom-reset">Reset Pan/Zoom</button>
+      </div>
+
+      <!-- Page Nav Floating Controls -->
+      <div class="floating-bar page-controls" id="page-controls" style="display:none;">
         <button id="prev-page">&lt;</button>
         <span style="font-size: 0.85rem;">Page <span id="page-num">1</span> of <span id="page-count">1</span></span>
         <button id="next-page">&gt;</button>
       </div>
+
+      <div id="loading-overlay" style="display:none;">Processing PDF Export...</div>
     </main>
   </div>
 
   <script>
+    // Config PDF.js worker locally to avoid CORS errors
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    // State Configuration
     const SYMBOLS = {
       outlet: { name: 'Outlets', color: '#22c55e', code: 'O' },
       switch: { name: 'Switches', color: '#3b82f6', code: 'S' },
@@ -269,19 +294,24 @@
     let pdfDoc = null;
     let pageNum = 1;
     let markings = [];
-    let isRendering = false;
+    
+    // Pan and Zoom Parameters
+    let zoomLevel = 1;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let startX = 0, startY = 0;
 
-    // DOM Elements
     const mainArea = document.getElementById('main-area');
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
+    const stage = document.getElementById('stage');
     const canvasContainer = document.getElementById('canvas-container');
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     const markingsLayer = document.getElementById('markings-layer');
     const counterBar = document.getElementById('counter-bar');
 
-    // Init Counters
     function updateCounters() {
       counterBar.innerHTML = '';
       const counts = {};
@@ -303,7 +333,7 @@
     }
     updateCounters();
 
-    // Palette Selection Listener
+    // Select Tool
     document.querySelectorAll('.symbol-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.symbol-btn').forEach(b => b.classList.remove('active'));
@@ -312,7 +342,7 @@
       });
     });
 
-    // File Drag/Drop Handlers
+    // Drag & Drop File Loading
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => loadPDF(e.target.files[0]));
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -323,7 +353,6 @@
       if (e.dataTransfer.files.length) loadPDF(e.dataTransfer.files[0]);
     });
 
-    // Load PDF Document
     function loadPDF(file) {
       if (!file || file.type !== 'application/pdf') return;
       const reader = new FileReader();
@@ -333,64 +362,85 @@
           pdfDoc = pdf;
           document.getElementById('page-count').textContent = pdf.numPages;
           dropZone.style.display = 'none';
-          canvasContainer.style.display = 'inline-block';
+          stage.style.display = 'block';
           document.getElementById('page-controls').style.display = 'flex';
+          document.getElementById('zoom-controls').style.display = 'flex';
           pageNum = 1;
+          resetPanZoom();
           renderPage(pageNum);
-        }).catch(err => {
-          alert("Error loading PDF: " + err.message);
         });
       };
       reader.readAsArrayBuffer(file);
     }
 
-    // Dynamic Scale Calculation & Render
+    function applyTransform() {
+      stage.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+      document.getElementById('zoom-level').textContent = `${Math.round(zoomLevel * 100)}%`;
+    }
+
+    function resetPanZoom() {
+      zoomLevel = 1;
+      const mainRect = mainArea.getBoundingClientRect();
+      panX = (mainRect.width - (canvas.width || 800)) / 2;
+      panY = (mainRect.height - (canvas.height || 600)) / 2;
+      applyTransform();
+    }
+
     function renderPage(num) {
-      if (isRendering || !pdfDoc) return;
-      isRendering = true;
-
       pdfDoc.getPage(num).then(page => {
-        // Calculate dynamic scale so PDF fits nicely inside viewer window
-        const padding = 40;
-        const availableWidth = mainArea.clientWidth - padding;
-        const availableHeight = mainArea.clientHeight - padding;
-        
-        const unscaledViewport = page.getViewport({ scale: 1 });
-        const scaleX = availableWidth / unscaledViewport.width;
-        const scaleY = availableHeight / unscaledViewport.height;
-        const fitScale = Math.min(scaleX, scaleY);
+        const viewport = page.getViewport({ scale: 1.5 });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
 
-        // Responsive crisp rendering on high-DPI screens
-        const outputScale = window.devicePixelRatio || 1;
-        const viewport = page.getViewport({ scale: fitScale });
-
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = Math.floor(viewport.width) + "px";
-        canvas.style.height = Math.floor(viewport.height) + "px";
-
-        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
-
-        const renderContext = {
-          canvasContext: ctx,
-          transform: transform,
-          viewport: viewport
-        };
-
+        const renderContext = { canvasContext: ctx, viewport: viewport };
         page.render(renderContext).promise.then(() => {
-          isRendering = false;
           renderMarkings();
+          if (panX === 0 && panY === 0) resetPanZoom();
         });
       });
       document.getElementById('page-num').textContent = num;
     }
 
-    // Place Marking Handler (Uses percentage positions)
+    // Pan Handlers
+    mainArea.addEventListener('mousedown', (e) => {
+      if (e.target.classList.contains('placed-symbol')) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => isDragging = false);
+
+    // Mousewheel Zoom
+    mainArea.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      zoomLevel = Math.min(Math.max(0.3, zoomLevel * delta), 5);
+      applyTransform();
+    }, { passive: false });
+
+    // Zoom Buttons
+    document.getElementById('zoom-in').addEventListener('click', () => { zoomLevel = Math.min(5, zoomLevel * 1.2); applyTransform(); });
+    document.getElementById('zoom-out').addEventListener('click', () => { zoomLevel = Math.max(0.3, zoomLevel / 1.2); applyTransform(); });
+    document.getElementById('zoom-reset').addEventListener('click', resetPanZoom);
+
+    // Place Markings Relative to Unscaled Canvas Bounds
     canvasContainer.addEventListener('click', (e) => {
-      if (e.target !== canvas && e.target !== markingsLayer) return;
+      if (isDragging) return;
       const rect = canvas.getBoundingClientRect();
+      
+      // Calculate relative percentage accurately regardless of zoom level
       const xRatio = (e.clientX - rect.left) / rect.width;
       const yRatio = (e.clientY - rect.top) / rect.height;
+
+      if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return;
 
       markings.push({
         id: Date.now(),
@@ -404,10 +454,8 @@
       updateCounters();
     });
 
-    // Render Overlay Symbols for Active Page
     function renderMarkings() {
       markingsLayer.innerHTML = '';
-
       markings.filter(m => m.page === pageNum).forEach(m => {
         const sym = SYMBOLS[m.type];
         const el = document.createElement('div');
@@ -418,7 +466,6 @@
         el.textContent = sym.code;
         el.title = "Click to remove";
 
-        // Remove item on click
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           markings = markings.filter(item => item.id !== m.id);
@@ -436,7 +483,6 @@
       updateCounters();
     }
 
-    // Page Navigation
     document.getElementById('prev-page').addEventListener('click', () => {
       if (pageNum <= 1) return;
       pageNum--;
@@ -448,10 +494,68 @@
       renderPage(pageNum);
     });
 
-    // Auto Adjust on Window Resize
-    window.addEventListener('resize', () => {
-      if (pdfDoc) renderPage(pageNum);
-    });
+    // Multi-page PDF Export Engine
+    async function exportAllPagesPDF() {
+      if (!pdfDoc) return;
+      const loading = document.getElementById('loading-overlay');
+      loading.style.display = 'flex';
+
+      const { jsPDF } = window.jspdf;
+      let pdfOutput = null;
+
+      // Temp Canvas for drawing items directly into image export
+      const exportCanvas = document.createElement('canvas');
+      const exportCtx = exportCanvas.getContext('2d');
+
+      for (let p = 1; p <= pdfDoc.numPages; p++) {
+        const page = await pdfDoc.getPage(p);
+        const viewport = page.getViewport({ scale: 2.0 }); // High res render for print quality
+
+        exportCanvas.width = viewport.width;
+        exportCanvas.height = viewport.height;
+
+        // Render PDF base
+        await page.render({ canvasContext: exportCtx, viewport: viewport }).promise;
+
+        // Draw Markings on export canvas
+        const pageMarkings = markings.filter(m => m.page === p);
+        pageMarkings.forEach(m => {
+          const sym = SYMBOLS[m.type];
+          const x = m.xRatio * exportCanvas.width;
+          const y = m.yRatio * exportCanvas.height;
+
+          // Draw item circle
+          exportCtx.beginPath();
+          exportCtx.arc(x, y, 16, 0, 2 * Math.PI);
+          exportCtx.fillStyle = sym.color;
+          exportCtx.fill();
+          exportCtx.lineWidth = 2;
+          exportCtx.strokeStyle = '#ffffff';
+          exportCtx.stroke();
+
+          // Draw item text code
+          exportCtx.fillStyle = '#ffffff';
+          exportCtx.font = 'bold 16px sans-serif';
+          exportCtx.textAlign = 'center';
+          exportCtx.textBaseline = 'middle';
+          exportCtx.fillText(sym.code, x, y);
+        });
+
+        const imgData = exportCanvas.toDataURL('image/jpeg', 0.95);
+        const orientation = viewport.width > viewport.height ? 'landscape' : 'portrait';
+
+        if (p === 1) {
+          pdfOutput = new jsPDF({ orientation: orientation, unit: 'px', format: [viewport.width, viewport.height] });
+        } else {
+          pdfOutput.addPage([viewport.width, viewport.height], orientation);
+        }
+
+        pdfOutput.addImage(imgData, 'JPEG', 0, 0, viewport.width, viewport.height);
+      }
+
+      pdfOutput.save('electrical_takeoff_estimate.pdf');
+      loading.style.display = 'none';
+    }
   </script>
 </body>
 </html>
