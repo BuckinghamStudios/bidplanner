@@ -93,6 +93,8 @@
       text-align: center;
     }
     .btn-action:hover { background: #0369a1; }
+    .btn-secondary { background: #334155; }
+    .btn-secondary:hover { background: #475569; }
     .btn-clear { background: #ef4444; }
     .btn-clear:hover { background: #dc2626; }
 
@@ -147,13 +149,13 @@
     .placed-symbol {
       position: absolute;
       transform: translate(-50%, -50%);
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.75rem;
+      font-size: 0.8rem;
       font-weight: 700;
       color: #ffffff;
       cursor: pointer;
@@ -202,6 +204,16 @@
       font-weight: bold;
       z-index: 200;
     }
+
+    /* Print Layout Styling */
+    @media print {
+      body { background: white; color: black; overflow: visible; }
+      sidebar, header button, .floating-bar, #drop-zone, #loading-overlay { display: none !important; }
+      header { border: none; background: transparent; padding: 0; }
+      .counter-badge { border: 1px solid #ccc; color: black; background: #f0f0f0; }
+      main { padding: 0; overflow: visible; }
+      #stage { transform: none !important; position: static; }
+    }
   </style>
 </head>
 <body>
@@ -237,6 +249,7 @@
 
       <div class="panel-section" style="margin-top: auto;">
         <button class="btn-action" onclick="exportAllPagesPDF()">Export All Pages to PDF</button>
+        <button class="btn-action btn-secondary" onclick="window.print()">Print Current Page</button>
         <button class="btn-action btn-clear" onclick="clearMarkings()">Clear Current Page</button>
       </div>
     </sidebar>
@@ -382,7 +395,6 @@
         const availHeight = mainArea.clientHeight - padding;
         const unscaledViewport = page.getViewport({ scale: 1 });
 
-        // Auto calculate sharp baseline sizing
         const scaleX = availWidth / unscaledViewport.width;
         const scaleY = availHeight / unscaledViewport.height;
         const fitScale = Math.min(scaleX, scaleY);
@@ -440,7 +452,7 @@
     document.getElementById('zoom-out').addEventListener('click', () => { zoomLevel = Math.max(0.4, zoomLevel / 1.25); updateTransform(); });
     document.getElementById('zoom-reset').addEventListener('click', resetPanZoom);
 
-    // Precise Placement (Ignores drag movements)
+    // Precise Placement
     canvasContainer.addEventListener('click', (e) => {
       if (hasDragged) return;
 
@@ -502,7 +514,7 @@
       renderPage(pageNum);
     });
 
-    // Clean Multi-Page Export
+    // Clean Multi-Page Export with Header Counters, Footer Link, and Larger Symbols
     async function exportAllPagesPDF() {
       if (!pdfDoc) return;
       const loading = document.getElementById('loading-overlay');
@@ -521,28 +533,75 @@
         exportCanvas.width = viewport.width;
         exportCanvas.height = viewport.height;
 
+        // Render PDF Base
         await page.render({ canvasContext: exportCtx, viewport: viewport }).promise;
 
+        // 1. Draw Top Counter Banner
+        const bannerHeight = 60;
+        exportCtx.fillStyle = '#1e293b';
+        exportCtx.fillRect(0, 0, exportCanvas.width, bannerHeight);
+
+        // Calculate counts
+        const pageCounts = {};
+        Object.keys(SYMBOLS).forEach(type => pageCounts[type] = 0);
+        markings.filter(m => m.page === p).forEach(m => { if (pageCounts[m.type] !== undefined) pageCounts[m.type]++; });
+
+        // Draw counters inside header banner
+        let curX = 20;
+        exportCtx.font = 'bold 18px sans-serif';
+        exportCtx.textAlign = 'left';
+        exportCtx.textBaseline = 'middle';
+
+        Object.keys(SYMBOLS).forEach(type => {
+          const sym = SYMBOLS[type];
+          // Circle Icon
+          exportCtx.beginPath();
+          exportCtx.arc(curX + 10, bannerHeight / 2, 10, 0, 2 * Math.PI);
+          exportCtx.fillStyle = sym.color;
+          exportCtx.fill();
+
+          // Label and count text
+          exportCtx.fillStyle = '#ffffff';
+          const text = `${sym.name}: ${pageCounts[type]}`;
+          exportCtx.fillText(text, curX + 28, bannerHeight / 2);
+
+          curX += exportCtx.measureText(text).width + 55;
+        });
+
+        // 2. Draw Larger Markings on Page
         const pageMarkings = markings.filter(m => m.page === p);
+        const iconRadius = 24; // Scaled up icon radius for high visibility
+
         pageMarkings.forEach(m => {
           const sym = SYMBOLS[m.type];
           const x = m.xRatio * exportCanvas.width;
           const y = m.yRatio * exportCanvas.height;
 
           exportCtx.beginPath();
-          exportCtx.arc(x, y, 16, 0, 2 * Math.PI);
+          exportCtx.arc(x, y, iconRadius, 0, 2 * Math.PI);
           exportCtx.fillStyle = sym.color;
           exportCtx.fill();
-          exportCtx.lineWidth = 2;
+          exportCtx.lineWidth = 3;
           exportCtx.strokeStyle = '#ffffff';
           exportCtx.stroke();
 
           exportCtx.fillStyle = '#ffffff';
-          exportCtx.font = 'bold 16px sans-serif';
+          exportCtx.font = 'bold 22px sans-serif';
           exportCtx.textAlign = 'center';
           exportCtx.textBaseline = 'middle';
           exportCtx.fillText(sym.code, x, y);
         });
+
+        // 3. Draw Bottom Footer Attribution
+        const footerHeight = 35;
+        exportCtx.fillStyle = '#0f172a';
+        exportCtx.fillRect(0, exportCanvas.height - footerHeight, exportCanvas.width, footerHeight);
+
+        exportCtx.fillStyle = '#94a3b8';
+        exportCtx.font = '16px sans-serif';
+        exportCtx.textAlign = 'center';
+        exportCtx.textBaseline = 'middle';
+        exportCtx.fillText('Generated via Electrical Takeoff & Estimating Tool', exportCanvas.width / 2, exportCanvas.height - (footerHeight / 2));
 
         const imgData = exportCanvas.toDataURL('image/jpeg', 0.95);
         const orientation = viewport.width > viewport.height ? 'landscape' : 'portrait';
