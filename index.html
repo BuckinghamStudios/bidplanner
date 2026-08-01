@@ -192,6 +192,103 @@
     }
     .floating-bar button:hover { background: #475569; }
 
+    /* Modal / Export Preview Options */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 300;
+      backdrop-filter: blur(4px);
+    }
+    .modal-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      width: 900px;
+      max-width: 95vw;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 16px 20px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+      color: #38bdf8;
+    }
+    .modal-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    .modal-sidebar {
+      width: 300px;
+      padding: 20px;
+      border-right: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: #1e293b;
+    }
+    .modal-preview-area {
+      flex: 1;
+      background: #090d16;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: auto;
+    }
+    .modal-preview-area canvas {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .option-group label {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .option-group input[type="range"],
+    .option-group select {
+      width: 100%;
+      padding: 8px;
+      background: #334155;
+      border: 1px solid #475569;
+      color: white;
+      border-radius: 6px;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #f8fafc;
+      cursor: pointer;
+    }
+    .modal-footer {
+      padding: 16px 20px;
+      background: #0f172a;
+      border-top: 1px solid #334155;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
     #loading-overlay {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -202,17 +299,15 @@
       color: #38bdf8;
       font-size: 1.2rem;
       font-weight: bold;
-      z-index: 200;
+      z-index: 400;
     }
 
-    /* Print Layout Styling */
+    /* Print Specific Hidden Container */
+    #print-container { display: none; }
     @media print {
-      body { background: white; color: black; overflow: visible; }
-      sidebar, header button, .floating-bar, #drop-zone, #loading-overlay { display: none !important; }
-      header { border: none; background: transparent; padding: 0; }
-      .counter-badge { border: 1px solid #ccc; color: black; background: #f0f0f0; }
-      main { padding: 0; overflow: visible; }
-      #stage { transform: none !important; position: static; }
+      body * { display: none !important; }
+      #print-container, #print-container * { display: block !important; }
+      #print-container img { width: 100%; height: auto; }
     }
   </style>
 </head>
@@ -248,8 +343,8 @@
       </div>
 
       <div class="panel-section" style="margin-top: auto;">
-        <button class="btn-action" onclick="exportAllPagesPDF()">Export All Pages to PDF</button>
-        <button class="btn-action btn-secondary" onclick="window.print()">Print Current Page</button>
+        <button class="btn-action" onclick="openExportModal('pdf')">Export PDF / Options</button>
+        <button class="btn-action btn-secondary" onclick="openExportModal('print')">Print Preview</button>
         <button class="btn-action btn-clear" onclick="clearMarkings()">Clear Current Page</button>
       </div>
     </sidebar>
@@ -281,9 +376,56 @@
         <button id="next-page">&gt;</button>
       </div>
 
-      <div id="loading-overlay" style="display:none;">Exporting All Blueprint Pages...</div>
+      <div id="loading-overlay" style="display:none;">Processing Request...</div>
     </main>
   </div>
+
+  <!-- Interactive Export & Print Preview Modal -->
+  <div class="modal-overlay" id="export-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span id="modal-title">Export Options & Preview</span>
+        <button style="background:none; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer;" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-sidebar">
+          <div class="option-group">
+            <label>Pages to Include</label>
+            <select id="opt-pages">
+              <option value="all">All Pages</option>
+              <option value="current">Current Page Only</option>
+            </select>
+          </div>
+
+          <div class="option-group">
+            <label>Symbol Size Multiplier (<span id="opt-size-val">100%</span>)</label>
+            <input type="range" id="opt-size" min="0.5" max="2" step="0.1" value="1">
+          </div>
+
+          <div class="option-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="opt-header" checked> Include Top Counter Banner
+            </label>
+          </div>
+
+          <div class="option-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="opt-footer" checked> Include Footer Web Link
+            </label>
+          </div>
+        </div>
+        <div class="modal-preview-area">
+          <canvas id="modal-preview-canvas"></canvas>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-action btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-action" id="modal-submit-btn" onclick="executeExport()">Generate Output</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="print-container"></div>
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -301,6 +443,7 @@
     let pdfDoc = null;
     let pageNum = 1;
     let markings = [];
+    let exportMode = 'pdf'; // 'pdf' or 'print'
     
     // Zoom & Pan state
     let zoomLevel = 1;
@@ -514,108 +657,177 @@
       renderPage(pageNum);
     });
 
-    // Clean Multi-Page Export with Header Counters, Footer Link, and Larger Symbols
-    async function exportAllPagesPDF() {
+    /* EXPORT & PRINT PREVIEW MODAL LOGIC */
+    const exportModal = document.getElementById('export-modal');
+    const previewCanvas = document.getElementById('modal-preview-canvas');
+    const previewCtx = previewCanvas.getContext('2d');
+
+    function openExportModal(mode) {
       if (!pdfDoc) return;
-      const loading = document.getElementById('loading-overlay');
-      loading.style.display = 'flex';
+      exportMode = mode;
+      document.getElementById('modal-title').textContent = mode === 'pdf' ? 'Export PDF Options & Preview' : 'Print Options & Preview';
+      document.getElementById('modal-submit-btn').textContent = mode === 'pdf' ? 'Download PDF' : 'Print Document';
+      exportModal.style.display = 'flex';
+      updatePreviewCanvas();
+    }
 
-      const { jsPDF } = window.jspdf;
-      let pdfOutput = null;
+    function closeModal() {
+      exportModal.style.display = 'none';
+    }
 
-      const exportCanvas = document.createElement('canvas');
-      const exportCtx = exportCanvas.getContext('2d');
+    // Modal Inputs Realtime Listeners
+    document.getElementById('opt-size').addEventListener('input', (e) => {
+      document.getElementById('opt-size-val').textContent = `${Math.round(e.target.value * 100)}%`;
+      updatePreviewCanvas();
+    });
+    document.getElementById('opt-pages').addEventListener('change', updatePreviewCanvas);
+    document.getElementById('opt-header').addEventListener('change', updatePreviewCanvas);
+    document.getElementById('opt-footer').addEventListener('change', updatePreviewCanvas);
 
-      for (let p = 1; p <= pdfDoc.numPages; p++) {
-        const page = await pdfDoc.getPage(p);
-        const viewport = page.getViewport({ scale: 2.0 });
+    async function generateCustomCanvas(targetPageNum, options) {
+      const page = await pdfDoc.getPage(targetPageNum);
+      const viewport = page.getViewport({ scale: 2.0 });
 
-        exportCanvas.width = viewport.width;
-        exportCanvas.height = viewport.height;
+      const c = document.createElement('canvas');
+      c.width = viewport.width;
+      c.height = viewport.height;
+      const cx = c.getContext('2d');
 
-        // Render PDF Base
-        await page.render({ canvasContext: exportCtx, viewport: viewport }).promise;
+      // Base Render
+      await page.render({ canvasContext: cx, viewport: viewport }).promise;
 
-        // 1. Draw Top Counter Banner
+      // 1. Header Banner
+      if (options.showHeader) {
         const bannerHeight = 60;
-        exportCtx.fillStyle = '#1e293b';
-        exportCtx.fillRect(0, 0, exportCanvas.width, bannerHeight);
+        cx.fillStyle = '#1e293b';
+        cx.fillRect(0, 0, c.width, bannerHeight);
 
-        // Calculate counts
         const pageCounts = {};
         Object.keys(SYMBOLS).forEach(type => pageCounts[type] = 0);
-        markings.filter(m => m.page === p).forEach(m => { if (pageCounts[m.type] !== undefined) pageCounts[m.type]++; });
+        markings.filter(m => m.page === targetPageNum).forEach(m => { if (pageCounts[m.type] !== undefined) pageCounts[m.type]++; });
 
-        // Draw counters inside header banner
         let curX = 20;
-        exportCtx.font = 'bold 18px sans-serif';
-        exportCtx.textAlign = 'left';
-        exportCtx.textBaseline = 'middle';
+        cx.font = 'bold 18px sans-serif';
+        cx.textAlign = 'left';
+        cx.textBaseline = 'middle';
 
         Object.keys(SYMBOLS).forEach(type => {
           const sym = SYMBOLS[type];
-          // Circle Icon
-          exportCtx.beginPath();
-          exportCtx.arc(curX + 10, bannerHeight / 2, 10, 0, 2 * Math.PI);
-          exportCtx.fillStyle = sym.color;
-          exportCtx.fill();
+          cx.beginPath();
+          cx.arc(curX + 10, bannerHeight / 2, 10, 0, 2 * Math.PI);
+          cx.fillStyle = sym.color;
+          cx.fill();
 
-          // Label and count text
-          exportCtx.fillStyle = '#ffffff';
+          cx.fillStyle = '#ffffff';
           const text = `${sym.name}: ${pageCounts[type]}`;
-          exportCtx.fillText(text, curX + 28, bannerHeight / 2);
-
-          curX += exportCtx.measureText(text).width + 55;
+          cx.fillText(text, curX + 28, bannerHeight / 2);
+          curX += cx.measureText(text).width + 55;
         });
-
-        // 2. Draw Larger Markings on Page
-        const pageMarkings = markings.filter(m => m.page === p);
-        const iconRadius = 24; // Scaled up icon radius for high visibility
-
-        pageMarkings.forEach(m => {
-          const sym = SYMBOLS[m.type];
-          const x = m.xRatio * exportCanvas.width;
-          const y = m.yRatio * exportCanvas.height;
-
-          exportCtx.beginPath();
-          exportCtx.arc(x, y, iconRadius, 0, 2 * Math.PI);
-          exportCtx.fillStyle = sym.color;
-          exportCtx.fill();
-          exportCtx.lineWidth = 3;
-          exportCtx.strokeStyle = '#ffffff';
-          exportCtx.stroke();
-
-          exportCtx.fillStyle = '#ffffff';
-          exportCtx.font = 'bold 22px sans-serif';
-          exportCtx.textAlign = 'center';
-          exportCtx.textBaseline = 'middle';
-          exportCtx.fillText(sym.code, x, y);
-        });
-
-        // 3. Draw Bottom Footer Attribution
-        const footerHeight = 35;
-        exportCtx.fillStyle = '#0f172a';
-        exportCtx.fillRect(0, exportCanvas.height - footerHeight, exportCanvas.width, footerHeight);
-
-        exportCtx.fillStyle = '#94a3b8';
-        exportCtx.font = '16px sans-serif';
-        exportCtx.textAlign = 'center';
-        exportCtx.textBaseline = 'middle';
-        exportCtx.fillText('Generated via Electrical Takeoff & Estimating Tool', exportCanvas.width / 2, exportCanvas.height - (footerHeight / 2));
-
-        const imgData = exportCanvas.toDataURL('image/jpeg', 0.95);
-        const orientation = viewport.width > viewport.height ? 'landscape' : 'portrait';
-
-        if (p === 1) {
-          pdfOutput = new jsPDF({ orientation: orientation, unit: 'px', format: [viewport.width, viewport.height] });
-        } else {
-          pdfOutput.addPage([viewport.width, viewport.height], orientation);
-        }
-
-        pdfOutput.addImage(imgData, 'JPEG', 0, 0, viewport.width, viewport.height);
       }
 
-      pdfOutput.save('electrical_takeoff_estimate.pdf');
+      // 2. Markings
+      const pageMarkings = markings.filter(m => m.page === targetPageNum);
+      const baseRadius = 24 * options.sizeMult;
+
+      pageMarkings.forEach(m => {
+        const sym = SYMBOLS[m.type];
+        const x = m.xRatio * c.width;
+        const y = m.yRatio * c.height;
+
+        cx.beginPath();
+        cx.arc(x, y, baseRadius, 0, 2 * Math.PI);
+        cx.fillStyle = sym.color;
+        cx.fill();
+        cx.lineWidth = 3 * options.sizeMult;
+        cx.strokeStyle = '#ffffff';
+        cx.stroke();
+
+        cx.fillStyle = '#ffffff';
+        cx.font = `bold ${Math.round(22 * options.sizeMult)}px sans-serif`;
+        cx.textAlign = 'center';
+        cx.textBaseline = 'middle';
+        cx.fillText(sym.code, x, y);
+      });
+
+      // 3. Footer
+      if (options.showFooter) {
+        const footerHeight = 35;
+        cx.fillStyle = '#0f172a';
+        cx.fillRect(0, c.height - footerHeight, c.width, footerHeight);
+
+        cx.fillStyle = '#94a3b8';
+        cx.font = '16px sans-serif';
+        cx.textAlign = 'center';
+        cx.textBaseline = 'middle';
+        cx.fillText('Generated via Electrical Takeoff & Estimating Tool', c.width / 2, c.height - (footerHeight / 2));
+      }
+
+      return c;
+    }
+
+    async function updatePreviewCanvas() {
+      const options = {
+        sizeMult: parseFloat(document.getElementById('opt-size').value),
+        showHeader: document.getElementById('opt-header').checked,
+        showFooter: document.getElementById('opt-footer').checked,
+      };
+
+      const compiledCanvas = await generateCustomCanvas(pageNum, options);
+      previewCanvas.width = compiledCanvas.width;
+      previewCanvas.height = compiledCanvas.height;
+      previewCtx.drawImage(compiledCanvas, 0, 0);
+    }
+
+    async function executeExport() {
+      closeModal();
+      const loading = document.getElementById('loading-overlay');
+      loading.style.display = 'flex';
+
+      const options = {
+        sizeMult: parseFloat(document.getElementById('opt-size').value),
+        showHeader: document.getElementById('opt-header').checked,
+        showFooter: document.getElementById('opt-footer').checked,
+        pages: document.getElementById('opt-pages').value
+      };
+
+      const startPage = options.pages === 'current' ? pageNum : 1;
+      const endPage = options.pages === 'current' ? pageNum : pdfDoc.numPages;
+
+      if (exportMode === 'pdf') {
+        const { jsPDF } = window.jspdf;
+        let pdfOutput = null;
+
+        for (let p = startPage; p <= endPage; p++) {
+          const renderedCanvas = await generateCustomCanvas(p, options);
+          const imgData = renderedCanvas.toDataURL('image/jpeg', 0.95);
+          const orientation = renderedCanvas.width > renderedCanvas.height ? 'landscape' : 'portrait';
+
+          if (!pdfOutput) {
+            pdfOutput = new jsPDF({ orientation: orientation, unit: 'px', format: [renderedCanvas.width, renderedCanvas.height] });
+          } else {
+            pdfOutput.addPage([renderedCanvas.width, renderedCanvas.height], orientation);
+          }
+
+          pdfOutput.addImage(imgData, 'JPEG', 0, 0, renderedCanvas.width, renderedCanvas.height);
+        }
+
+        pdfOutput.save('electrical_takeoff_estimate.pdf');
+      } else if (exportMode === 'print') {
+        const printContainer = document.getElementById('print-container');
+        printContainer.innerHTML = '';
+
+        for (let p = startPage; p <= endPage; p++) {
+          const renderedCanvas = await generateCustomCanvas(p, options);
+          const img = document.createElement('img');
+          img.src = renderedCanvas.toDataURL('image/png');
+          printContainer.appendChild(img);
+        }
+
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      }
+
       loading.style.display = 'none';
     }
 
