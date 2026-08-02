@@ -8,7 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    html, body { height: 100%; }
+    html, body { height: 100%; width: 100%; }
     body { display: flex; flex-direction: column; background: #0f172a; color: #f8fafc; overflow: hidden; }
 
     /* Header Bar */
@@ -20,6 +20,7 @@
       align-items: center;
       border-bottom: 1px solid #334155;
       z-index: 10;
+      height: 60px;
     }
     .header-title { font-weight: 700; font-size: 1.1rem; color: #38bdf8; }
     .counter-bar { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -36,7 +37,7 @@
     .counter-badge span.count { font-weight: 700; color: #38bdf8; font-size: 1rem; }
 
     /* Layout */
-    .workspace { display: flex; flex: 1; overflow: hidden; }
+    .workspace { display: flex; flex: 1; overflow: hidden; height: calc(100vh - 60px); }
 
     /* Sidebar */
     sidebar {
@@ -90,9 +91,10 @@
       font-weight: 600;
       cursor: pointer;
       text-align: center;
+      width: 100%;
     }
     .btn-action:hover { background: #0369a1; }
-    .btn-clear { background: #ef4444; }
+    .btn-clear { background: #ef4444; margin-top: 8px; }
     .btn-clear:hover { background: #dc2626; }
 
     /* Main Drawing Area */
@@ -202,7 +204,7 @@
       z-index: 200;
     }
 
-    /* Print Styles to fix Blank Pages */
+    /* Print System Isolation */
     #print-sheet-wrapper { display: none; }
 
     @media print {
@@ -238,14 +240,13 @@
         page-break-inside: avoid;
         break-inside: avoid;
         position: relative;
-        width: 100vw;
-        height: 100vh;
-        max-height: 100vh;
+        width: 100%;
+        max-height: 99.5vh;
         display: flex;
         justify-content: center;
         align-items: center;
         background: #fff;
-        margin: 0 !important;
+        margin: 0 auto !important;
         padding: 0 !important;
         box-sizing: border-box;
         overflow: hidden;
@@ -253,7 +254,7 @@
 
       .print-page img {
         max-width: 100%;
-        max-height: 100%;
+        max-height: 99.5vh;
         width: auto;
         height: auto;
         object-fit: contain;
@@ -330,7 +331,7 @@
     </main>
   </div>
 
-  <!-- Native Print Container -->
+  <!-- Container for print engine DOM nodes -->
   <div id="print-sheet-wrapper"></div>
 
   <script>
@@ -573,6 +574,7 @@
 
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
+      const imagePromises = [];
 
       for (let p = 1; p <= pdfDoc.numPages; p++) {
         const page = await pdfDoc.getPage(p);
@@ -585,7 +587,7 @@
         await page.render({ canvasContext: tempCtx, viewport: viewport }).promise;
 
         // 1. Draw Top Header Counter Banner
-        const bannerHeight = 50;
+        const bannerHeight = Math.max(50, tempCanvas.height * 0.04);
         tempCtx.fillStyle = '#1e293b';
         tempCtx.fillRect(0, 0, tempCanvas.width, bannerHeight);
 
@@ -594,26 +596,28 @@
         markings.filter(m => m.page === p).forEach(m => { if (pageCounts[m.type] !== undefined) pageCounts[m.type]++; });
 
         let curX = 20;
-        tempCtx.font = 'bold 16px sans-serif';
+        const fontSize = Math.max(14, Math.floor(bannerHeight * 0.35));
+        tempCtx.font = `bold ${fontSize}px sans-serif`;
         tempCtx.textAlign = 'left';
         tempCtx.textBaseline = 'middle';
 
         Object.keys(SYMBOLS).forEach(type => {
           const sym = SYMBOLS[type];
+          const radius = Math.floor(fontSize * 0.45);
           tempCtx.beginPath();
-          tempCtx.arc(curX + 8, bannerHeight / 2, 8, 0, 2 * Math.PI);
+          tempCtx.arc(curX + radius, bannerHeight / 2, radius, 0, 2 * Math.PI);
           tempCtx.fillStyle = sym.color;
           tempCtx.fill();
 
           tempCtx.fillStyle = '#ffffff';
           const text = `${sym.name}: ${pageCounts[type]}`;
-          tempCtx.fillText(text, curX + 22, bannerHeight / 2);
-          curX += tempCtx.measureText(text).width + 45;
+          tempCtx.fillText(text, curX + (radius * 2) + 6, bannerHeight / 2);
+          curX += tempCtx.measureText(text).width + (radius * 2) + 30;
         });
 
         // 2. Draw Symbols
         const pageMarkings = markings.filter(m => m.page === p);
-        const iconRadius = 20;
+        const iconRadius = Math.max(16, Math.floor(tempCanvas.width * 0.012));
 
         pageMarkings.forEach(m => {
           const sym = SYMBOLS[m.type];
@@ -629,19 +633,19 @@
           tempCtx.stroke();
 
           tempCtx.fillStyle = '#ffffff';
-          tempCtx.font = 'bold 18px sans-serif';
+          tempCtx.font = `bold ${Math.floor(iconRadius * 1.1)}px sans-serif`;
           tempCtx.textAlign = 'center';
           tempCtx.textBaseline = 'middle';
           tempCtx.fillText(sym.code, x, y);
         });
 
         // 3. Draw Bottom Footer Link
-        const footerHeight = 30;
+        const footerHeight = Math.max(30, tempCanvas.height * 0.025);
         tempCtx.fillStyle = '#0f172a';
         tempCtx.fillRect(0, tempCanvas.height - footerHeight, tempCanvas.width, footerHeight);
 
         tempCtx.fillStyle = '#94a3b8';
-        tempCtx.font = '14px sans-serif';
+        tempCtx.font = `${Math.max(12, Math.floor(footerHeight * 0.45))}px sans-serif`;
         tempCtx.textAlign = 'center';
         tempCtx.textBaseline = 'middle';
         tempCtx.fillText('Generated via Electrical Takeoff & Estimating Tool', tempCanvas.width / 2, tempCanvas.height - (footerHeight / 2));
@@ -655,14 +659,14 @@
         pageDiv.appendChild(img);
 
         printWrapper.appendChild(pageDiv);
+        imagePromises.push(img.decode ? img.decode() : Promise.resolve());
       }
 
+      // Ensure all page images are rendered in DOM memory before triggering print
+      await Promise.all(imagePromises);
       loading.style.display = 'none';
 
-      // Launch native print dialog
-      setTimeout(() => {
-        window.print();
-      }, 200);
+      window.print();
     }
 
     window.addEventListener('resize', () => {
