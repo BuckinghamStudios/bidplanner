@@ -8,7 +8,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { display: flex; flex-direction: column; height: 100vh; background: #0f172a; color: #f8fafc; overflow: hidden; }
+    html, body { height: 100%; }
+    body { display: flex; flex-direction: column; background: #0f172a; color: #f8fafc; overflow: hidden; }
 
     /* Header Bar */
     header {
@@ -201,36 +202,62 @@
       z-index: 200;
     }
 
-    /* Native Print View Layering */
+    /* Print Styles to fix Blank Pages */
     #print-sheet-wrapper { display: none; }
 
     @media print {
-      @page { margin: 0; size: auto; }
-      body { background: white !important; color: black !important; overflow: visible !important; height: auto !important; }
-      header, sidebar, main, .floating-bar, #drop-zone, #loading-overlay { display: none !important; }
+      @page {
+        margin: 0;
+        size: auto;
+      }
+
+      html, body {
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        color: black !important;
+        overflow: visible !important;
+      }
+
+      header, sidebar, main, .floating-bar, #drop-zone, #loading-overlay {
+        display: none !important;
+      }
       
       #print-sheet-wrapper {
         display: block !important;
-        width: 100%;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
+
       .print-page {
         page-break-after: always;
         break-after: page;
+        page-break-inside: avoid;
+        break-inside: avoid;
         position: relative;
         width: 100vw;
         height: 100vh;
+        max-height: 100vh;
         display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+        justify-content: center;
         align-items: center;
         background: #fff;
-        padding: 0;
+        margin: 0 !important;
+        padding: 0 !important;
         box-sizing: border-box;
+        overflow: hidden;
       }
+
       .print-page img {
         max-width: 100%;
-        max-height: calc(100vh - 80px);
+        max-height: 100%;
+        width: auto;
+        height: auto;
         object-fit: contain;
+        display: block;
       }
     }
   </style>
@@ -535,7 +562,7 @@
       renderPage(pageNum);
     });
 
-    /* Native Browser Print Engine across ALL pages */
+    /* Native Print Engine across ALL pages */
     async function triggerNativePrint() {
       if (!pdfDoc) return;
       const loading = document.getElementById('loading-overlay');
